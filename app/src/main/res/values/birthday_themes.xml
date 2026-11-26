@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="BirthdayLight" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:colorAccent">#235D45</item>
+        <item name="android:windowBackground">#F0F4F0</item>
+        <item name="android:statusBarColor">#184B36</item>
+        <item name="android:navigationBarColor">#F0F4F0</item>
+    </style>
+    <style name="BirthdayDark" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:colorAccent">#A0DAB5</item>
+        <item name="android:windowBackground">#111A16</item>
+        <item name="android:statusBarColor">#173E2D</item>
+        <item name="android:navigationBarColor">#111A16</item>
+    </style>
+</resources>
