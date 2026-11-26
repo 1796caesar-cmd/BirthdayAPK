@@ -3,6 +3,11 @@ on:
   workflow_dispatch:
   push:
     branches: [main]
+permissions:
+  contents: write
+concurrency:
+  group: birthday-apk-release
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -25,25 +30,55 @@ jobs:
       - name: Prepare signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.BIRTHDAY_KEYSTORE_BASE64 }}
+        shell: bash
         run: |
-          if [ -n "$KEYSTORE_BASE64" ]; then
-            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/birthday.jks"
-            echo "BIRTHDAY_KEYSTORE=$RUNNER_TEMP/birthday.jks" >> "$GITHUB_ENV"
+          set -euo pipefail
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::BIRTHDAY_KEYSTORE_BASE64 is not configured. Add the permanent signing key before publishing."
+            exit 1
           fi
-      - name: Build APK
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/birthday.jks"
+          echo "BIRTHDAY_KEYSTORE=$RUNNER_TEMP/birthday.jks" >> "$GITHUB_ENV"
+      - name: Build signed APK
         env:
           BIRTHDAY_STORE_PASSWORD: ${{ secrets.BIRTHDAY_STORE_PASSWORD }}
           BIRTHDAY_KEY_ALIAS: ${{ secrets.BIRTHDAY_KEY_ALIAS }}
           BIRTHDAY_KEY_PASSWORD: ${{ secrets.BIRTHDAY_KEY_PASSWORD }}
+        shell: bash
         run: |
-          if [ -n "$BIRTHDAY_KEYSTORE" ]; then
-            gradle :app:assembleRelease
-            cp app/build/outputs/apk/release/app-release.apk BirthdayAPK.apk
-          else
-            gradle :app:assembleDebug
-            cp app/build/outputs/apk/debug/app-debug.apk BirthdayAPK.apk
-          fi
+          set -euo pipefail
+          for name in BIRTHDAY_STORE_PASSWORD BIRTHDAY_KEY_ALIAS BIRTHDAY_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing signing secret: $name"
+              exit 1
+            fi
+          done
+          gradle :app:assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk BirthdayAPK.apk
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:?Android SDK not found}}"
+          "$SDK_ROOT/build-tools/35.0.0/apksigner" verify BirthdayAPK.apk
       - uses: actions/upload-artifact@v4
         with:
           name: BirthdayAPK
           path: BirthdayAPK.apk
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v1.${GITHUB_RUN_NUMBER}"
+          # A re-run retains the same version and release. Never replace an existing published APK.
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release $TAG already exists. Keeping the published APK."
+            exit 0
+          fi
+          LATEST=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)
+          MARK_LATEST=true
+          if [[ "$LATEST" =~ ^v1\.([0-9]+)$ ]] && (( BASH_REMATCH[1] > GITHUB_RUN_NUMBER )); then
+            MARK_LATEST=false
+          fi
+          gh release create "$TAG" BirthdayAPK.apk --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "Іменинники АПК 1.${GITHUB_RUN_NUMBER}" \
+            --notes "Автоматична збірка №${GITHUB_RUN_NUMBER}." --latest="$MARK_LATEST"
