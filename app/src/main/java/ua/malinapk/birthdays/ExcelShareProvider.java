@@ -13,7 +13,9 @@ public final class ExcelShareProvider extends ContentProvider {
  static final String APK_MIME="application/vnd.android.package-archive";
  static File apkFile(Context c){return new File(new File(c.getFilesDir(),"updates"),"BirthdayAPK.apk");}
  static Uri apkUri(Context c){return new Uri.Builder().scheme("content").authority(c.getPackageName()+".excelshare").appendPath("BirthdayAPK.apk").build();}
- private File file(Uri u){Context c=getContext();if(uri(c).equals(u))return new File(c.getFilesDir(),LocalWorkbook.NAME);if(apkUri(c).equals(u))return apkFile(c);throw new IllegalArgumentException("Unknown file");}
+ static File reportFile(Context c,int year){if(year<1900||year>9999)throw new IllegalArgumentException("Invalid year");return new File(c.getFilesDir(),"Ювіляри_"+year+".xlsx");}
+ static Uri reportUri(Context c,int year){return new Uri.Builder().scheme("content").authority(c.getPackageName()+".excelshare").appendPath(reportFile(c,year).getName()).build();}
+ private File file(Uri u){Context c=getContext();if(uri(c).equals(u))return new File(c.getFilesDir(),LocalWorkbook.NAME);if(apkUri(c).equals(u))return apkFile(c);String name=u.getLastPathSegment();if(name!=null&&name.matches("Ювіляри_[0-9]{4}\\.xlsx")){int year=Integer.parseInt(name.substring(8,12));if(reportUri(c,year).equals(u))return reportFile(c,year);}throw new IllegalArgumentException("Unknown file");}
  @Override public boolean onCreate(){return true;}
  @Override public String getType(Uri u){file(u);return apkUri(getContext()).equals(u)?APK_MIME:MIME;}
  @Override public Cursor query(Uri u,String[] projection,String selection,String[] selectionArgs,String sortOrder){
