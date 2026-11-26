@@ -3,9 +3,9 @@
     <style name="BirthdayLight" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:colorAccent">#235D45</item>
         <item name="android:windowBackground">#F2F2F2</item>
-        <item name="android:statusBarColor">#B9DCC4</item>
+        <item name="android:statusBarColor">#173E2D</item>
         <item name="android:navigationBarColor">#F2F2F2</item>
-        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightStatusBar">false</item>
         <item name="android:textColorPrimary">#000000</item>
         <item name="android:textColorSecondary">#000000</item>
         <item name="android:textColorHint">#000000</item>
