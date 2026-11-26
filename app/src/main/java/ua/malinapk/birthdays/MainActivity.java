@@ -128,7 +128,7 @@ public class MainActivity extends Activity {
  @Override public boolean dispatchTouchEvent(android.view.MotionEvent e){int a=e.getActionMasked();if(a==MotionEvent.ACTION_DOWN){swipeCandidate=false;if(calendarSwipeArea!=null&&mode.equals("calendar")){int[] loc=new int[2];calendarSwipeArea.getLocationOnScreen(loc);float x=e.getRawX(),y=e.getRawY();swipeCandidate=x>=loc[0]&&x<=loc[0]+calendarSwipeArea.getWidth()&&y>=loc[1]&&y<=loc[1]+calendarSwipeArea.getHeight();downX=x;downY=y;}}else if(a==MotionEvent.ACTION_POINTER_DOWN||a==MotionEvent.ACTION_CANCEL){swipeCandidate=false;}else if(swipeCandidate&&a==MotionEvent.ACTION_MOVE){float dx=e.getRawX()-downX,dy=e.getRawY()-downY;if(Math.abs(dy)>dp(22)&&Math.abs(dy)>Math.abs(dx))swipeCandidate=false;}else if(a==MotionEvent.ACTION_UP&&swipeCandidate){swipeCandidate=false;float dx=e.getRawX()-downX,dy=e.getRawY()-downY;if(Math.abs(dx)>dp(65)&&Math.abs(dx)>Math.abs(dy)*1.6f){MotionEvent cancel=MotionEvent.obtain(e);cancel.setAction(MotionEvent.ACTION_CANCEL);super.dispatchTouchEvent(cancel);cancel.recycle();changeMonth(dx<0?1:-1);return true;}}return super.dispatchTouchEvent(e);}
 
  List<Person> sorted(List<Person> src,int y){List<Person> a=new ArrayList<>(src);a.sort(Comparator.comparing((Person p)->p.birthday(y)).thenComparing(Person::name,String.CASE_INSENSITIVE_ORDER));return a;}
- void calendar(LinearLayout b){LinearLayout r=row();r.addView(monthArrow(-1),new LinearLayout.LayoutParams(dp(48),-2));TextView title=text(months[selected.getMonthValue()-1]+" "+selected.getYear(),20,INK,true);title.setGravity(Gravity.CENTER);title.setOnClickListener(v->chooseMonth());weight(r,title);r.addView(monthArrow(1),new LinearLayout.LayoutParams(dp(48),-2));add(b,r);gap(b,12);if(!selected.equals(YearMonth.now()))action(b,button("Поточний місяць",()->{selected=YearMonth.now();show();}));int y=selected.getYear();List<Person> list=new ArrayList<>();int j=0,today=0;for(Person p:sorted(people,y))if(p.birthday(y).getMonthValue()==selected.getMonthValue()){list.add(p);if(p.jubilee(y))j++;if(p.birthday(y).equals(LocalDate.now()))today++;}LinearLayout stats=row();statsTile(stats,"Іменинники",list.size(),GREEN,NAV);statsTile(stats,"Ювіляри",j,INK,JUBILEE);statsTile(stats,"Сьогодні",today,INK,TODAY);add(b,stats);gap(b,14);section(b,"Іменинники місяця");LinearLayout titles=row();TextView d=text("Дата",12,INK,true);titles.addView(d,new LinearLayout.LayoutParams(fontDp(55),-2));weight(titles,text("ПІБ",12,INK,true));titles.addView(text("Вік",12,INK,true),new LinearLayout.LayoutParams(fontDp(48),-2));pad(titles,8);add(b,titles);LinearLayout rows=scrollingPeople(b,true);if(list.isEmpty())add(rows,text("У цьому місяці немає іменинників",15,MUTED,false));View anchor=null;LocalDate now=LocalDate.now();boolean current=selected.equals(YearMonth.from(now));for(Person p:list){int index=rows.getChildCount();personRow(rows,p,y,true);if(current&&anchor==null&&!p.birthday(y).isBefore(now))anchor=rows.getChildAt(index);}if(!list.isEmpty()){if(current&&anchor==null)anchor=rows.getChildAt(rows.getChildCount()-2);calendarMore(b,rows,calendarScroll,anchor);}}
+ void calendar(LinearLayout b){LinearLayout r=row();r.addView(monthArrow(-1),new LinearLayout.LayoutParams(dp(48),-2));TextView title=text(months[selected.getMonthValue()-1]+" "+selected.getYear(),20,INK,true);title.setGravity(Gravity.CENTER);title.setOnClickListener(v->chooseMonth());weight(r,title);r.addView(monthArrow(1),new LinearLayout.LayoutParams(dp(48),-2));add(b,r);gap(b,12);if(!selected.equals(YearMonth.now()))action(b,button("Поточний місяць",()->{selected=YearMonth.now();show();}));int y=selected.getYear();List<Person> list=new ArrayList<>();int j=0,today=0;for(Person p:sorted(people,y))if(p.birthday(y).getMonthValue()==selected.getMonthValue()){list.add(p);if(p.jubilee(y))j++;if(p.birthday(y).equals(LocalDate.now()))today++;}LinearLayout stats=row();statsTile(stats,"Іменинники",list.size(),GREEN,NAV);statsTile(stats,"Ювіляри",j,INK,JUBILEE);statsTile(stats,"Сьогодні",today,INK,TODAY);add(b,stats);gap(b,14);section(b,"Іменинники місяця");LinearLayout titles=row();TextView d=text("Дата",12,INK,true);titles.addView(d,new LinearLayout.LayoutParams(fontDp(55),-2));weight(titles,text("ПІБ",12,INK,true));titles.addView(text("Вік",12,INK,true),new LinearLayout.LayoutParams(fontDp(48),-2));pad(titles,8);add(b,titles);LinearLayout rows=scrollingPeople(b,true);if(list.isEmpty())add(rows,text("У цьому місяці немає іменинників",15,MUTED,false));View anchor=null;LocalDate now=LocalDate.now();boolean current=selected.equals(YearMonth.from(now));for(Person p:list){int index=rows.getChildCount();personRow(rows,p,y,true);if(current){LocalDate birthday=p.birthday(y);if(birthday.equals(now)||(anchor==null&&birthday.isAfter(now)))anchor=rows.getChildAt(index);}}if(!list.isEmpty()){if(current&&anchor==null)anchor=rows.getChildAt(rows.getChildCount()-2);calendarMore(b,rows,calendarScroll,anchor);}}
  // Navigation controls live outside the clipped list. Their visibility follows the scroll range.
  void calendarMore(LinearLayout parent,LinearLayout rows,ScrollView scroll,View anchor){
   LinearLayout top=col(),bottom=col();top.setPadding(0,0,0,dp(6));bottom.setPadding(0,dp(6),0,0);
@@ -137,23 +137,44 @@ public class MainActivity extends Activity {
   up.setContentDescription("Ще — прокрутити список іменинників вгору");down.setContentDescription("Ще — прокрутити список іменинників вниз");add(top,up);add(bottom,down);
   top.setVisibility(View.GONE);bottom.setVisibility(View.GONE);
   parent.addView(top,parent.indexOfChild((View)scroll.getParent()),new LinearLayout.LayoutParams(-1,-2));add(parent,bottom);
-  final boolean[] initial={true};
-  Runnable refresh=()->{
-   if(calendarScroll!=scroll||!scroll.isAttachedToWindow()||scroll.getHeight()<=0||rows.getChildCount()<2)return;
-   if(initial[0]&&anchor!=null)scroll.scrollTo(0,Math.max(0,anchor.getTop()-rows.getPaddingTop()));
-   View first=rows.getChildAt(0),last=rows.getChildAt(rows.getChildCount()-2);
-   int y=scroll.getScrollY(),height=scroll.getHeight();
-   // If removing a bottom control reveals the last card, keep it removed. Ignore trailing padding.
-   boolean above=first.getTop()<y;
-   boolean below=last.getBottom()>y+height;
-   int uv=above?View.VISIBLE:View.GONE,dv=below?View.VISIBLE:View.GONE;
-   boolean changed=top.getVisibility()!=uv||bottom.getVisibility()!=dv;if(top.getVisibility()!=uv)top.setVisibility(uv);if(bottom.getVisibility()!=dv)bottom.setVisibility(dv);if(!changed)initial[0]=false;
+  // A posted runnable can execute before the first real layout (especially during onCreate/onResume).
+  // Pre-draw runs after measurement/layout and repeats when the visibility of either control changes.
+  scroll.setDescendantFocusability(ViewGroup.FOCUS_BEFORE_DESCENDANTS);
+  scroll.setFocusableInTouchMode(true);
+  final ViewTreeObserver.OnPreDrawListener preDraw=new ViewTreeObserver.OnPreDrawListener(){
+   boolean initial=true;
+   boolean focusPrepared=false;
+   @Override public boolean onPreDraw(){
+    if(calendarScroll!=scroll||!scroll.isAttachedToWindow()||scroll.getHeight()<=0||rows.getChildCount()<2)return true;
+    if(initial){
+     if(!focusPrepared){focusPrepared=true;scroll.requestFocus();}
+     if(anchor!=null)scroll.scrollTo(0,Math.max(0,anchor.getTop()-rows.getPaddingTop()));
+    }
+    View first=rows.getChildAt(0),last=rows.getChildAt(rows.getChildCount()-2);
+    int y=scroll.getScrollY(),height=scroll.getHeight();
+    int uv=first.getTop()<y?View.VISIBLE:View.GONE;
+    int dv=last.getBottom()>y+height?View.VISIBLE:View.GONE;
+    boolean changed=top.getVisibility()!=uv||bottom.getVisibility()!=dv;
+    if(top.getVisibility()!=uv)top.setVisibility(uv);
+    if(bottom.getVisibility()!=dv)bottom.setVisibility(dv);
+    // Keep the initial anchor until the new viewport has been laid out, then allow normal scrolling.
+    if(changed){scroll.requestLayout();return false;}
+    initial=false;
+    return true;
+   }
   };
-  Runnable schedule=()->{scroll.removeCallbacks(refresh);scroll.post(refresh);};
-  scroll.setOnScrollChangeListener((v,x,y,oldX,oldY)->schedule.run());
-  View.OnLayoutChangeListener layout=(v,l,t,r,b,ol,ot,or,ob)->schedule.run();
-  scroll.addOnLayoutChangeListener(layout);rows.addOnLayoutChangeListener(layout);top.addOnLayoutChangeListener(layout);bottom.addOnLayoutChangeListener(layout);
-  schedule.run();
+  // Register on the actual attached tree; discard listeners belonging to replaced screens.
+  class CalendarDrawRegistration implements View.OnAttachStateChangeListener {
+   ViewTreeObserver observer;
+   void register(){if(observer!=null&&observer.isAlive())return;observer=scroll.getViewTreeObserver();if(observer.isAlive())observer.addOnPreDrawListener(preDraw);}
+   @Override public void onViewAttachedToWindow(View v){register();}
+   @Override public void onViewDetachedFromWindow(View v){if(observer!=null&&observer.isAlive())observer.removeOnPreDrawListener(preDraw);else if(scroll.getViewTreeObserver().isAlive())scroll.getViewTreeObserver().removeOnPreDrawListener(preDraw);observer=null;}
+  }
+  CalendarDrawRegistration registration=new CalendarDrawRegistration();
+  scroll.addOnAttachStateChangeListener(registration);
+  // The calendar may already be attached when rebuilt from an existing activity.
+  if(scroll.isAttachedToWindow())registration.register();
+  scroll.invalidate();
  }
  void chooseMonth(){LinearLayout l=col();pad(l,16);Spinner m=new Spinner(this);m.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,months));m.setSelection(selected.getMonthValue()-1);EditText y=new EditText(this);y.setInputType(2);y.setText(""+selected.getYear());add(l,m);add(l,y);new AlertDialog.Builder(this).setTitle("Місяць і рік").setView(l).setPositiveButton("Вибрати",(d,w)->{try{int year=Integer.parseInt(y.getText().toString());if(year<1900||year>9999)throw new IllegalArgumentException();selected=YearMonth.of(year,m.getSelectedItemPosition()+1);show();}catch(Exception e){msg("Некоректний рік");}}).setNegativeButton("Скасувати",null).show();}
 
