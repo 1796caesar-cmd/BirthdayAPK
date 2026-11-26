@@ -1,0 +1,44 @@
+name: Build Birthday APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: android-actions/setup-android@v3
+      - run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Prepare signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.BIRTHDAY_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/birthday.jks"
+            echo "BIRTHDAY_KEYSTORE=$RUNNER_TEMP/birthday.jks" >> "$GITHUB_ENV"
+          fi
+      - name: Build APK
+        env:
+          BIRTHDAY_STORE_PASSWORD: ${{ secrets.BIRTHDAY_STORE_PASSWORD }}
+          BIRTHDAY_KEY_ALIAS: ${{ secrets.BIRTHDAY_KEY_ALIAS }}
+          BIRTHDAY_KEY_PASSWORD: ${{ secrets.BIRTHDAY_KEY_PASSWORD }}
+        run: |
+          if [ -n "$BIRTHDAY_KEYSTORE" ]; then
+            gradle :app:assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk BirthdayAPK.apk
+          else
+            gradle :app:assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk BirthdayAPK.apk
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: BirthdayAPK
+          path: BirthdayAPK.apk
