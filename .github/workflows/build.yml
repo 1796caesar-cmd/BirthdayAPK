@@ -27,6 +27,22 @@ jobs:
           SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           test -x "$SDKMANAGER"
           "$SDKMANAGER" --sdk_root="$SDK_ROOT" 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Prepare stand typography
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets
+          # Preserve optional locally supplied Times New Roman assets; otherwise
+          # obtain the freely licensed Tinos family used in the approved sample.
+          if [ ! -s app/src/main/assets/stand_regular.ttf ] || [ ! -s app/src/main/assets/stand_bold.ttf ]; then
+            if [ ! -r /usr/share/fonts/truetype/croscore/Tinos-Regular.ttf ] || [ ! -r /usr/share/fonts/truetype/croscore/Tinos-Bold.ttf ]; then
+              sudo apt-get update
+              sudo apt-get install -y fonts-croscore
+            fi
+            cp /usr/share/fonts/truetype/croscore/Tinos-Regular.ttf app/src/main/assets/stand_regular.ttf
+            cp /usr/share/fonts/truetype/croscore/Tinos-Bold.ttf app/src/main/assets/stand_bold.ttf
+            cp /usr/share/doc/fonts-croscore/copyright app/src/main/assets/stand_font_license.txt
+          fi
       - name: Prepare signing key
         env:
           KEYSTORE_BASE64: ${{ secrets.BIRTHDAY_KEYSTORE_BASE64 }}
