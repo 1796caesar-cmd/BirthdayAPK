@@ -370,7 +370,50 @@ public class MainActivity extends Activity {
   format.setOnCheckedChangeListener((group,id)->{boolean cert=id==certificate.getId();if(cert&&!wasCertificate[0]){previousJub[0]=jub.isChecked();wasCertificate[0]=true;jub.setChecked(true);}else if(!cert&&wasCertificate[0]){wasCertificate[0]=false;jub.setChecked(previousJub[0]);}refresh.run();});
   action(parent,button("Скинути фільтри",()->{format.check(excel.getId());year.setSelection(10);month.setSelection(0);unit.setSelection(0);sort.setSelection(0);jub.setChecked(false);split.setChecked(false);refresh.run();}));add(parent,output);refresh.run();
  }
- void settings(LinearLayout b){section(b,"Налаштування");telegramSettings(collapsibleSettings(b,"telegramSettings","Telegram"));LinearLayout appearance=collapsibleSettings(b,"appearance","Зовнішній вигляд");action(appearance,button("Тема: "+themeLabel(),this::themeSettings));action(appearance,button("Розмір шрифту: "+prefs().getInt("fontPercent",100)+"%",this::fontSettings));action(appearance,button("Тіні елементів: "+shadowLabel(),this::shadowSettings));action(appearance,button("Об’єм елементів: "+volumeLabel(),this::volumeSettings));LinearLayout colors=collapsibleSettings(b,"colors","Кольори оформлення");colorOptions(colors,activeTheme);LinearLayout dirs=collapsibleSettings(b,"directories","Довідники");action(dirs,button("Назва підприємства"+(companyName().isEmpty()?" (не вказано)":"\n"+companyName()),this::editCompanyName));action(dirs,button("Посади ("+directory(true).size()+")",()->directoryDialog(true)));add(dirs,button("Підрозділи ("+directory(false).size()+")",()->directoryDialog(false)));LinearLayout c=collapsibleSettings(b,"excel","Excel — база працівників");action(c,button("Обрати Excel",this::pickExcel));add(c,text("Для резервної копії всієї бази: залиш усі місяці та підрозділи, без додаткових обмежень.",13,MUTED,false));LinearLayout export=collapsibleSettings(b,"export","Вивантаження — Excel / стенд / грамота");exportFilters(export);LinearLayout permissions=collapsibleSettings(b,"permissions","Системні дозволи додатка");add(permissions,button("Перевірити дозволи",()->startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,Uri.parse("package:"+getPackageName())))));LinearLayout update=card(b);add(update,text("Оновлення додатка",19,GREEN,true));add(update,text("Встановлена версія: "+installedVersion(),14,MUTED,false));gap(update,8);add(update,button("Перевірити оновлення",this::checkUpdate));}
+ // Check the real Android settings each time the screen is rendered (including onResume).
+ Uri permissionPackage(){return Uri.parse("package:"+getPackageName());}
+ Intent appDetails(){return new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,permissionPackage());}
+ boolean trySystemPage(Intent i){try{startActivity(i);return true;}catch(RuntimeException e){return false;}}
+ void openSystemPage(Intent i){if(!trySystemPage(i)&&!trySystemPage(appDetails()))msg("Відкрий налаштування телефону → Програми → Іменинники");}
+ boolean xiaomiPhone(){String s=(Build.MANUFACTURER+" "+Build.BRAND).toLowerCase(Locale.ROOT);return s.contains("xiaomi")||s.contains("redmi")||s.contains("poco")||s.contains("blackshark");}
+ void openAutoStart(){
+  if(trySystemPage(new Intent().setClassName("com.miui.securitycenter","com.miui.permcenter.autostart.AutoStartManagementActivity")))return;
+  if(trySystemPage(new Intent("miui.intent.action.OP_AUTO_START").setPackage("com.miui.securitycenter")))return;
+  msg("Програми → Фоновий автозапуск → Іменинники");openSystemPage(new Intent(Settings.ACTION_APPLICATION_SETTINGS));
+ }
+ void openBatterySaver(){
+  if(xiaomiPhone()&&trySystemPage(new Intent().setClassName("com.miui.powerkeeper","com.miui.powerkeeper.ui.HiddenAppsConfigActivity").putExtra("package_name",getPackageName()).putExtra("package_label","Іменинники")))return;
+  openSystemPage(appDetails());
+ }
+ void openUnusedSettings(){
+  if(Build.VERSION.SDK_INT>=31){openSystemPage(appDetails());return;}
+  try{startActivityForResult(new Intent("android.intent.action.AUTO_REVOKE_PERMISSIONS",permissionPackage()),104);}catch(RuntimeException e){openSystemPage(appDetails());}
+ }
+ void permissionRow(LinearLayout b,String title,String state,int stateColor,String note,Runnable open){
+  gap(b,6);LinearLayout r=row();r.setGravity(Gravity.CENTER_VERTICAL);LinearLayout labels=col();add(labels,text(title,16,INK,true));add(labels,text(state,13,stateColor,true));weight(r,labels);
+  Button btn=button("Відкрити",open);LinearLayout.LayoutParams bp=new LinearLayout.LayoutParams(-2,-2);bp.leftMargin=dp(8);r.addView(btn,bp);add(b,r);if(!note.isEmpty())add(b,text(note,13,MUTED,false));gap(b,8);
+ }
+ void systemPermissions(LinearLayout b){
+  add(b,text("Для надійних нагадувань додатку та Telegram, навіть коли Іменинники закриті. Після повернення статуси оновлюються автоматично.",14,MUTED,false));
+  NotificationManager nm=getSystemService(NotificationManager.class);NotificationChannel ch=nm.getNotificationChannel(ReminderReceiver.CHANNEL);
+  boolean notifications=nm.areNotificationsEnabled()&&(Build.VERSION.SDK_INT<33||checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED)&&(ch==null||ch.getImportance()!=NotificationManager.IMPORTANCE_NONE);
+  permissionRow(b,"Сповіщення",notifications?"✓ Дозволено":"! Не дозволено",notifications?GREEN:ERROR,"Увімкни сповіщення та категорію «Дні народження».",()->openSystemPage(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,getPackageName())));
+  boolean exact=Build.VERSION.SDK_INT<31||getSystemService(AlarmManager.class).canScheduleExactAlarms();
+  permissionRow(b,"Будильники та нагадування",exact?"✓ Дозволено":"! Потрібен дозвіл",exact?GREEN:ERROR,Build.VERSION.SDK_INT<31?"На цій версії Android окремий дозвіл не потрібен.":"Дозволь точні будильники та нагадування.",()->openSystemPage(Build.VERSION.SDK_INT>=31?new Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM,permissionPackage()):appDetails()));
+  PowerManager pm=getSystemService(PowerManager.class);boolean ignore=pm.isIgnoringBatteryOptimizations(getPackageName());
+  permissionRow(b,"Оптимізація батареї Android",ignore?"✓ Без оптимізації":"! Оптимізація активна",ignore?GREEN:ERROR,"У системному списку обери всі програми → Іменинники → Не оптимізувати.",()->openSystemPage(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)));
+  if(Build.VERSION.SDK_INT>=28){boolean restricted=getSystemService(ActivityManager.class).isBackgroundRestricted();permissionRow(b,"Фонова активність Android",restricted?"! Обмежена":"✓ Не обмежена",restricted?ERROR:GREEN,"У відомостях про програму перевір використання батареї у фоні.",this::openBatterySaver);}
+  if(xiaomiPhone()){
+   permissionRow(b,"Економія заряду Xiaomi","Перевір вручну",GOLD,"Встанови «Без обмежень». Це окремий параметр HyperOS/MIUI.",this::openBatterySaver);
+   permissionRow(b,"Фоновий автозапуск","Перевір вручну",GOLD,"У списку автозапуску увімкни Іменинники. Якщо прямий перехід недоступний, відкрий Програми → Фоновий автозапуск.",this::openAutoStart);
+  }
+  String unusedState="Перевір вручну";int unusedColor=GOLD;
+  if(Build.VERSION.SDK_INT>=30){try{boolean exempt=getPackageManager().isAutoRevokeWhitelisted();unusedState=exempt?"✓ Призупинення вимкнено":"! Потрібно вимкнути";unusedColor=exempt?GREEN:ERROR;}catch(RuntimeException ignored){}}
+  permissionRow(b,"Призупиняти дії програми, якщо не використовується",unusedState,unusedColor,"Вимкни цей перемикач, щоб система не відкликала дозволи через тривале невикористання.",this::openUnusedSettings);
+  if(pm.isPowerSaveMode())permissionRow(b,"Загальна економія заряду телефону","! Увімкнено",GOLD,"Режим може затримувати фонові задачі. За потреби вимкни його.",()->openSystemPage(new Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS)));
+  action(b,button("Відкрити відомості про додаток",()->openSystemPage(appDetails())));
+ }
+ void settings(LinearLayout b){section(b,"Налаштування");telegramSettings(collapsibleSettings(b,"telegramSettings","Telegram"));systemPermissions(collapsibleSettings(b,"permissions","Системні дозволи додатка"));LinearLayout appearance=collapsibleSettings(b,"appearance","Зовнішній вигляд");action(appearance,button("Тема: "+themeLabel(),this::themeSettings));action(appearance,button("Розмір шрифту: "+prefs().getInt("fontPercent",100)+"%",this::fontSettings));action(appearance,button("Тіні елементів: "+shadowLabel(),this::shadowSettings));action(appearance,button("Об’єм елементів: "+volumeLabel(),this::volumeSettings));LinearLayout colors=collapsibleSettings(b,"colors","Кольори оформлення");colorOptions(colors,activeTheme);LinearLayout dirs=collapsibleSettings(b,"directories","Довідники");action(dirs,button("Назва підприємства"+(companyName().isEmpty()?" (не вказано)":"\n"+companyName()),this::editCompanyName));action(dirs,button("Посади ("+directory(true).size()+")",()->directoryDialog(true)));add(dirs,button("Підрозділи ("+directory(false).size()+")",()->directoryDialog(false)));LinearLayout c=collapsibleSettings(b,"excel","Excel — база працівників");action(c,button("Обрати Excel",this::pickExcel));add(c,text("Для резервної копії всієї бази: залиш усі місяці та підрозділи, без додаткових обмежень.",13,MUTED,false));LinearLayout export=collapsibleSettings(b,"export","Вивантаження — Excel / стенд / грамота");exportFilters(export);LinearLayout update=card(b);add(update,text("Оновлення додатка",19,GREEN,true));add(update,text("Встановлена версія: "+installedVersion(),14,MUTED,false));gap(update,8);add(update,button("Перевірити оновлення",this::checkUpdate));}
 
 
  static final String RELEASE_API="https://api.github.com/repos/1796caesar-cmd/BirthdayAPK/releases/latest";
