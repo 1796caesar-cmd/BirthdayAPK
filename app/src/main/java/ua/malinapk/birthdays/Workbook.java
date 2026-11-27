@@ -15,7 +15,7 @@ final class Workbook {
   sheet=xml(files.get("xl/worksheets/sheet1.xml"));data=(Element)sheet.getElementsByTagNameNS(NS,"sheetData").item(0);
   if(data==null)throw new IOException("Немає таблиці");boolean header=false;NodeList rows=data.getElementsByTagNameNS(NS,"row");
   for(int i=0;i<rows.getLength();i++){Element r=(Element)rows.item(i);int row=Integer.parseInt(r.getAttribute("r"));String[] a=values(r);
-   if(row==1){header=a[0].equalsIgnoreCase("Прізвище")&&a[3].equalsIgnoreCase("Посада")&&a[4].equalsIgnoreCase("Підрозділ")&&a[5].equalsIgnoreCase("Дата народження");continue;}
+   if(row==1){header=a[0].equalsIgnoreCase("Прізвище")&&a[3].equalsIgnoreCase("Посада")&&a[4].equalsIgnoreCase("Підрозділ")&&a[5].replaceAll("\\s+"," ").equalsIgnoreCase("Дата народження");continue;}
    if(a[0].isEmpty())continue;try{LocalDate d=date(a[5]);people.add(new Person(row,a[0],a[1],a[2],a[3],a[4],d));}catch(Exception ex){throw new IOException("Некоректна дата народження в рядку "+row);}
   }if(!header)throw new IOException("Структура не відповідає файлу Іменинники.xlsx");
  }
@@ -38,6 +38,14 @@ final class Workbook {
  static double exportWidth(String value){return exportWidth(value,false);}
  static double exportWidth(String value,boolean bold){short[] metrics=bold?BOLD_WIDTH:NORMAL_WIDTH;double longest=0;for(String line:value.split("\\R",-1)){double width=0;for(int c:line.codePoints().toArray()){int index=c>=32&&c<=126?c-32:c>=0x400&&c<=0x4ff?95+c-0x400:-1;width+=index>=0?metrics[index]/100.0:c==0x2019?0.4:1.0;}longest=Math.max(longest,width);}return Math.min(255,Math.max(3,Math.ceil((longest*1.08+1.6)*10)/10));}
  static byte[] xmlBytes(Document doc)throws Exception{ByteArrayOutputStream out=new ByteArrayOutputStream();TransformerFactory.newInstance().newTransformer().transform(new DOMSource(doc),new StreamResult(out));return out.toByteArray();}
+ byte[] formattedExportOrdered(List<Person> ordered)throws Exception{
+  // Preserve original data and formatting while reordering the copied six-column employee table.
+  // The generated report is used instead if a workbook contains extra columns/sheets.
+  List<Element> copy=new ArrayList<>();for(Person person:ordered){Element original=row(person.row);if(original==null)throw new IOException("Не знайдено рядок "+person.row);copy.add((Element)original.cloneNode(true));}
+  NodeList existing=data.getElementsByTagNameNS(NS,"row");for(int i=existing.getLength()-1;i>=0;i--){Element r=(Element)existing.item(i);if(!"1".equals(r.getAttribute("r")))data.removeChild(r);}
+  int number=2;for(Element r:copy){r.setAttribute("r",Integer.toString(number));NodeList cells=r.getElementsByTagNameNS(NS,"c");for(int i=0;i<cells.getLength();i++){Element c=(Element)cells.item(i);String ref=c.getAttribute("r");c.setAttribute("r",ref.replaceFirst("[0-9]+$",Integer.toString(number)));}data.appendChild(r);number++;}
+  return formattedExport();
+ }
  byte[] formattedExport()throws Exception{
   // The caller constructs a fresh Workbook; only the exported copy is changed.
   Document styles=xml(files.get("xl/styles.xml"));Element borders=(Element)styles.getElementsByTagNameNS(NS,"borders").item(0),xfs=(Element)styles.getElementsByTagNameNS(NS,"cellXfs").item(0);

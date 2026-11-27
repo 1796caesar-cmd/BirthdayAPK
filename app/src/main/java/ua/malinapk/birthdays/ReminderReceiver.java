@@ -1,6 +1,7 @@
 package ua.malinapk.birthdays;
 import android.app.*;import android.content.*;import android.net.Uri;import android.os.Build;import org.json.*;import java.time.*;import java.util.*;
 public class ReminderReceiver extends BroadcastReceiver {
+ static final int STAND_ID=-100;
  static final String CHANNEL="birthdays", ACTION="ua.malinapk.birthdays.REMINDER";
  static android.content.SharedPreferences prefs(Context c){return c.getSharedPreferences("birthday",0);}
  static void cache(Context c,List<Person> list)throws Exception{JSONArray a=new JSONArray();for(Person p:list)a.put(p.json());prefs(c).edit().putString("cache",a.toString()).apply();}
@@ -22,16 +23,21 @@ public class ReminderReceiver extends BroadcastReceiver {
  static void saveRule(Context c,int id,int offset,LocalTime time){
   List<Integer> ids=rules(c);android.content.SharedPreferences.Editor e=prefs(c).edit();
   if(id<0){id=Math.max(3,prefs(c).getInt("nextRuleId",3));while(ids.contains(id))id++;ids.add(id);e.putInt("nextRuleId",id+1).putString("ruleIds",encode(ids)).putBoolean("enabled"+id,true);}
-  e.putInt("offset"+id,offset).putInt("hour"+id,time.getHour()).putInt("minute"+id,time.getMinute()).apply();scheduleOne(c,id);
+  e.putInt("offset"+id,offset).putInt("hour"+id,time.getHour()).putInt("minute"+id,time.getMinute()).apply();scheduleOne(c,id);scheduleStand(c);
  }
- static void removeRule(Context c,int id){List<Integer> ids=rules(c);ids.remove(Integer.valueOf(id));prefs(c).edit().putString("ruleIds",encode(ids)).remove("offset"+id).remove("hour"+id).remove("minute"+id).remove("enabled"+id).remove("last"+id).apply();AlarmManager am=c.getSystemService(AlarmManager.class);PendingIntent pi=alarm(c,id);am.cancel(pi);pi.cancel();}
- static void schedule(Context c){for(int id:rules(c))scheduleOne(c,id);}
+ static void removeRule(Context c,int id){List<Integer> ids=rules(c);ids.remove(Integer.valueOf(id));prefs(c).edit().putString("ruleIds",encode(ids)).remove("offset"+id).remove("hour"+id).remove("minute"+id).remove("enabled"+id).remove("last"+id).apply();AlarmManager am=c.getSystemService(AlarmManager.class);PendingIntent pi=alarm(c,id);am.cancel(pi);pi.cancel();scheduleStand(c);}
+ static void schedule(Context c){for(int id:rules(c))scheduleOne(c,id);scheduleStand(c);}
+ static LocalTime standTime(Context c){LocalTime earliest=null;for(int id:rules(c))if(enabled(c,id)&&(earliest==null||time(c,id).isBefore(earliest)))earliest=time(c,id);return earliest==null?LocalTime.of(8,0):earliest;}
+ static void scheduleStand(Context c){AlarmManager am=c.getSystemService(AlarmManager.class);PendingIntent pi=alarm(c,STAND_ID);am.cancel(pi);if(!prefs(c).getBoolean("standReminder",false)){pi.cancel();return;}LocalDateTime now=LocalDateTime.now();YearMonth month=YearMonth.from(now);LocalDate day=ExportFilter.standDay(month);if(now.toLocalDate().isAfter(day)||month.toString().equals(prefs(c).getString("lastStand","")))day=ExportFilter.standDay(month.plusMonths(1));LocalDateTime next=LocalDateTime.of(day,standTime(c));if(!next.isAfter(now))next=now.plusSeconds(2);setAlarm(c,am,pi,next);}
+ static void setAlarm(Context c,AlarmManager am,PendingIntent pi,LocalDateTime next){long when=next.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();try{if(Build.VERSION.SDK_INT<31||am.canScheduleExactAlarms())am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,pi);else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,pi);}catch(SecurityException e){am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,pi);}}
+ static void sendStand(Context c){if(!prefs(c).getBoolean("standReminder",false))return;YearMonth month=YearMonth.now();if(LocalDate.now().equals(ExportFilter.standDay(month))&&!month.toString().equals(prefs(c).getString("lastStand",""))){notify(c,"Оновлення стенда іменинників","Не забудьте оновити список на стенді: іменинники "+ExportFilter.MONTHS[month.getMonthValue()-1]+".",STAND_ID);prefs(c).edit().putString("lastStand",month.toString()).apply();}scheduleStand(c);}
+
  static void scheduleOne(Context c,int id){AlarmManager am=c.getSystemService(AlarmManager.class);LocalDateTime now=LocalDateTime.now();PendingIntent pi=alarm(c,id);am.cancel(pi);if(!enabled(c,id)){pi.cancel();return;}LocalDateTime next=LocalDateTime.of(now.toLocalDate(),time(c,id));if(!next.isAfter(now))next=next.plusDays(1);long when=next.atZone(ZoneId.systemDefault()).toInstant().toEpochMilli();try{if(Build.VERSION.SDK_INT<31||am.canScheduleExactAlarms())am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,pi);else am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,pi);}catch(SecurityException e){am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,when,pi);}}
  static List<Person> current(Context c){try{Workbook w=new Workbook(LocalWorkbook.read(c));cache(c,w.people);return w.people;}catch(Exception ignored){return cached(c);}}
  static void notify(Context c,String title,String text,int id){channel(c);Intent i=new Intent(c,MainActivity.class);PendingIntent open=PendingIntent.getActivity(c,0,i,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);Notification n=new Notification.Builder(c,CHANNEL).setSmallIcon(android.R.drawable.ic_menu_my_calendar).setContentTitle(title).setContentText(text).setStyle(new Notification.BigTextStyle().bigText(text)).setAutoCancel(true).setContentIntent(open).build();try{c.getSystemService(NotificationManager.class).notify(id,n);}catch(SecurityException ignored){}}
  @Override public void onReceive(Context c,Intent i){
   if(!ACTION.equals(i.getAction())){schedule(c);return;}
-  int id=i.getIntExtra("offset",-1);if(!enabled(c,id))return;
+  int id=i.getIntExtra("offset",-1);if(id==STAND_ID){sendStand(c);return;}if(!enabled(c,id))return;
   int offset=offset(c,id);LocalDate today=LocalDate.now();String date=today.toString();String key="last"+id;
   if(!date.equals(prefs(c).getString(key,""))){
    List<Person> list=current(c);LocalDate target=today.plusDays(offset);int yr=target.getYear();
@@ -39,6 +45,7 @@ public class ReminderReceiver extends BroadcastReceiver {
     String title=(offset==0?"Сьогодні":offset==1?"Завтра":"Через "+offset+" "+dayWord(offset))+(p.jubilee(yr)?" — ювілей!":" — день народження!");
     notify(c,title,p.name()+"\n"+(offset==0?"Виповнилося ":"Виповниться ")+p.ageIn(yr)+" р.",Math.abs(Objects.hash(p.name(),p.born,id,target)));
    }
+   if(today.getDayOfWeek()==DayOfWeek.MONDAY&&prefs(c).getBoolean("repeatWeekend",false))for(int back=2;back>=1;back--){LocalDate weekend=today.minusDays(back),birthday=weekend.plusDays(offset);int year=birthday.getYear();for(Person p:list)if(p.birthday(year).equals(birthday)&&(!prefs(c).getBoolean("onlyJubilee",false)||p.jubilee(year))){String dateLabel=birthday.format(java.time.format.DateTimeFormatter.ofPattern("dd.MM"));String title="Повтор за "+(back==2?"суботу":"неділю")+" — "+(p.jubilee(year)?"ювілей":"день народження");notify(c,title,p.name()+"\nДень народження: "+dateLabel+" · "+p.ageIn(year)+" р.",Objects.hash("weekend",p.name(),p.born,id,weekend));}}
    prefs(c).edit().putString(key,date).apply();
   }
   scheduleOne(c,id);
